@@ -1,0 +1,21 @@
+{
+  "name": "waip-autoflow",
+  "version": "1.0.0",
+  "description": "Autonomous execution mode for Claude Code sprints — auto-approve safe operations, notify on notable ones, hard-stop on destructive ones.",
+  "author": "WAIP",
+  "hooks": "../hooks/hooks.json",
+  "skills": [
+    "../skills/autoflow-control/SKILL.md",
+    "../skills/autoflow-sprint/SKILL.md"
+  ],
+  "agents": [
+    "../agents/risk-verifier.md"
+  ],
+  "mcpServers": {
+    "autoflow-audit": {
+      "command": "python3",
+      "args": ["../mcp-server/server.py"],
+      "env": {}
+    }
+  }
+}

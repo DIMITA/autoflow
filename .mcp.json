@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "autoflow-audit": {
+      "command": "python3",
+      "args": ["${AUTOFLOW_ROOT}/mcp-server/server.py"],
+      "env": {},
+      "description": "AutoFlow audit log and rollback tools. Provides get_session_log, get_diff_summary, rollback_to_checkpoint, export_report."
+    }
+  }
+}
