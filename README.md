@@ -47,7 +47,15 @@ To uninstall: `bash scripts/setup.sh --uninstall`
 
 ## Configure for your project
 
-Drop an `autoflow.config.json` at the **project root** — it takes precedence over the plugin defaults:
+Inside a Claude Code session, run:
+
+```
+/autoflow init
+```
+
+This generates an `autoflow.config.json` at the project root. AutoFlow detects the stack (Python, Node, Go, Rust…) and pre-fills sensible defaults. You can then ask Claude to edit the file directly — no need to leave the session.
+
+The file takes precedence over the plugin defaults. Example of what it might look like after customisation:
 
 ```json
 {
@@ -69,7 +77,7 @@ Drop an `autoflow.config.json` at the **project root** — it takes precedence o
 }
 ```
 
-Profile names are yours to define — they match your sprints, features, or team conventions.
+The config is re-read on every tool call — changes take effect immediately, no restart needed.
 
 ---
 
@@ -79,6 +87,7 @@ Available globally in every Claude Code session after install.
 
 | Command | Description |
 |---------|-------------|
+| `/autoflow init` | Generate `autoflow.config.json` for the current project |
 | `/autoflow start` | Activate autonomous mode |
 | `/autoflow stop` | Deactivate + save session log |
 | `/autoflow status` | Active mode, zones, live session summary |

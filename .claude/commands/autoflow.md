@@ -10,6 +10,18 @@ Parse the first word of the arguments to determine the subcommand, then execute 
 
 ---
 
+### `init`
+
+Generate a starter `autoflow.config.json` in the current project root. Detects the project type (Python, Node, Go, Rust…) and fills in sensible defaults.
+
+```bash
+python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" init
+```
+
+If the file already exists, show its current contents and suggest edits instead of overwriting.
+
+---
+
 ### `start [--profile <name>]`
 
 Activate AutoFlow autonomous mode.

@@ -3,6 +3,7 @@
 AutoFlow CLI — session management commands
 ==========================================
 Invoked by SKILL.md slash commands:
+  autoflow-cli.py init
   autoflow-cli.py start [--profile <name>]
   autoflow-cli.py stop
   autoflow-cli.py status
@@ -296,6 +297,75 @@ def _save_markdown_report(session: dict, log: list, path: Path) -> None:
         f.write("\n".join(lines) + "\n")
 
 
+def cmd_init(args: list[str]) -> None:
+    """Generate a starter autoflow.config.json in the current project root."""
+    dest = Path.cwd() / "autoflow.config.json"
+
+    if dest.exists():
+        print(f"autoflow.config.json already exists at {dest}")
+        print("Edit it directly, or delete it to regenerate.")
+        return
+
+    # Detect project type to suggest sensible defaults
+    cwd = Path.cwd()
+    trusted_paths = ["src/", "tests/"]
+    trusted_commands = ["git add", "git commit", "git status", "git diff"]
+    checkpoint_before = []
+
+    if (cwd / "package.json").exists():
+        trusted_commands += ["npm run", "npm test", "npx", "yarn", "pnpm"]
+        trusted_paths += ["lib/", "app/", "components/", "pages/"]
+    if (cwd / "pyproject.toml").exists() or (cwd / "setup.py").exists() or (cwd / "requirements.txt").exists():
+        trusted_commands += ["pytest", "python", "python3", "pip install"]
+    if (cwd / "Cargo.toml").exists():
+        trusted_commands += ["cargo build", "cargo test", "cargo check"]
+    if (cwd / "go.mod").exists():
+        trusted_commands += ["go build", "go test", "go run"]
+    if (cwd / "Makefile").exists():
+        trusted_commands += ["make"]
+    if (cwd / "alembic.ini").exists():
+        checkpoint_before += ["alembic upgrade", "alembic downgrade"]
+    if any(cwd.glob("docker-compose*.yml")):
+        checkpoint_before += ["docker-compose down"]
+
+    # Deduplicate while preserving order
+    seen: set = set()
+    trusted_commands = [c for c in trusted_commands if not (c in seen or seen.add(c))]  # type: ignore[func-returns-value]
+
+    config = {
+        "trusted_paths": trusted_paths,
+        "trusted_commands": trusted_commands,
+        "blocked_patterns": ["rm -rf", "--force", "DROP TABLE"],
+        "notify_on": ["git commit", "git push"],
+        "checkpoint_before": checkpoint_before,
+        "profiles": {
+            "sprint": {
+                "trusted_paths": trusted_paths,
+                "risk_threshold": "medium"
+            },
+            "strict": {
+                "trusted_paths": trusted_paths,
+                "risk_threshold": "low"
+            }
+        }
+    }
+
+    with open(dest, "w") as f:
+        json.dump(config, f, indent=2)
+
+    print(f"Created {dest}")
+    print()
+    print("Detected settings:")
+    print(f"  trusted_paths    : {', '.join(trusted_paths)}")
+    print(f"  trusted_commands : {', '.join(trusted_commands[:5])}{'...' if len(trusted_commands) > 5 else ''}")
+    if checkpoint_before:
+        print(f"  checkpoint_before: {', '.join(checkpoint_before)}")
+    print()
+    print("Edit autoflow.config.json to add your own profiles, then:")
+    print("  /autoflow start")
+    print("  /autoflow sprint <profile>")
+
+
 def cmd_sprint(args: list[str]) -> None:
     if not args:
         config = load_config()
@@ -319,6 +389,7 @@ def cmd_sprint(args: list[str]) -> None:
 
 
 COMMANDS = {
+    "init": cmd_init,
     "start": cmd_start,
     "stop": cmd_stop,
     "status": cmd_status,
