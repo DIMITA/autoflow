@@ -1,77 +1,58 @@
 {
   "mode": "sprint",
   "risk_threshold": "medium",
-  "trusted_paths": ["src/", "tests/", "collectors/", "etl/"],
+  "trusted_paths": ["src/", "tests/", "test/", "lib/", "app/"],
   "trusted_commands": [
-    "pytest",
-    "git add",
-    "git commit",
-    "git status",
-    "git diff",
-    "git log",
-    "docker-compose up",
-    "pip install",
-    "python",
-    "python3",
-    "ls",
-    "cat",
-    "grep",
-    "find",
-    "echo",
-    "pwd",
-    "which",
-    "mkdir",
-    "cp",
-    "mv"
+    "pytest", "python", "python3",
+    "npm test", "npm run", "npx", "node",
+    "yarn", "pnpm",
+    "git add", "git commit", "git status", "git diff", "git log", "git show",
+    "make", "cargo", "go test", "go build",
+    "ls", "cat", "grep", "find", "echo", "pwd", "which",
+    "mkdir", "cp", "mv", "touch",
+    "pip install", "pip freeze",
+    "docker-compose up", "docker-compose logs",
+    "curl", "jq"
   ],
   "blocked_patterns": [
     "rm -rf",
     "--force",
-    "-f ",
     "DROP TABLE",
     "DROP DATABASE",
-    "TRUNCATE",
+    "TRUNCATE TABLE",
     "shutdown",
     "reboot",
-    "format",
     "mkfs"
   ],
-  "notify_on": ["git commit", "docker-compose restart", "docker-compose down"],
   "sensitive_files": [
     ".env",
     ".env.prod",
     ".env.production",
     ".env.local",
+    ".env.staging",
     "docker-compose.prod.yml",
     "docker-compose.production.yml",
     "secrets.json",
-    "credentials.json"
+    "credentials.json",
+    "service-account.json",
+    "*.pem",
+    "*.key"
   ],
+  "notify_on": ["git commit", "git push"],
+  "checkpoint_before": [],
   "profiles": {
-    "sprint-etl": {
-      "trusted_paths": ["src/collectors/", "src/etl/", "tests/"],
-      "risk_threshold": "low"
-    },
-    "sprint-full": {
-      "trusted_paths": ["src/", "tests/", "collectors/", "etl/", "scripts/"],
+    "sprint": {
+      "trusted_paths": ["src/", "tests/", "test/"],
       "risk_threshold": "medium"
+    },
+    "strict": {
+      "trusted_paths": [],
+      "risk_threshold": "low"
     },
     "review": {
       "risk_threshold": "high",
       "notify_on": ["*"]
-    },
-    "safe": {
-      "trusted_paths": [],
-      "risk_threshold": "high",
-      "blocked_patterns": ["rm", "drop", "delete", "force", "--hard"]
     }
   },
-  "checkpoint_before": [
-    "docker-compose down",
-    "alembic upgrade",
-    "alembic downgrade",
-    "alembic stamp",
-    "git reset",
-    "git rebase"
-  ]
+  "_project_override": "Copy this file to your project root and customise. Project-level autoflow.config.json takes precedence over this default."
 }

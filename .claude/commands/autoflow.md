@@ -6,7 +6,7 @@ Manage autonomous execution mode for the current Claude Code session.
 
 ## Routing
 
-Parse the first word of the arguments to determine the subcommand, then execute the matching CLI call below. `AUTOFLOW_ROOT` is the directory where waip-autoflow is installed (set by `setup.sh`, or derive it from this file: `../../` relative to `.claude/commands/autoflow.md`).
+Parse the first word of the arguments to determine the subcommand, then execute the matching CLI call below. Resolve `AUTOFLOW_ROOT` from the environment, or derive it from this file's location (`../../` relative to `.claude/commands/autoflow.md`).
 
 ---
 
@@ -18,7 +18,7 @@ Activate AutoFlow autonomous mode.
 python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" start $ARGUMENTS
 ```
 
-After running, show the user: active mode, profile, trusted paths, risk threshold, and what kinds of operations will be auto-approved vs. blocked.
+Show the user: active mode, profile, trusted paths, risk threshold, and what will be auto-approved vs. blocked.
 
 ---
 
@@ -30,13 +30,13 @@ Deactivate AutoFlow and save the session log.
 python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" stop
 ```
 
-Display the session summary: counts of auto-approved / notified / blocked actions, checkpoints created, and path to the saved log file.
+Display session summary: auto-approved / notified / blocked counts, checkpoints created, path to saved log.
 
 ---
 
 ### `status`
 
-Show the current AutoFlow state and session log summary.
+Show current AutoFlow state and live session log summary.
 
 ```bash
 python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" status
@@ -46,7 +46,7 @@ python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" status
 
 ### `trust <path>`
 
-Add a path to the session-level trusted zone (temporary, not written to config).
+Add a path to the session-level trusted zone (temporary — not written to config).
 
 ```bash
 python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" trust $ARGUMENTS
@@ -72,8 +72,6 @@ Create a manual git checkpoint before a risky operation.
 python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" checkpoint $ARGUMENTS
 ```
 
-Display the created tag name.
-
 ---
 
 ### `report`
@@ -82,11 +80,6 @@ Generate and display the full session audit report.
 
 ```bash
 python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" report
-```
-
-Then show a git diff summary of files modified during the session:
-
-```bash
 git diff --stat HEAD
 ```
 
@@ -94,7 +87,7 @@ git diff --stat HEAD
 
 ### `sprint <profile>`
 
-Activate a named sprint profile (activates AutoFlow if not already active).
+Activate a named sprint profile (activates AutoFlow if not already active). Profiles are defined in the project's `autoflow.config.json`.
 
 ```bash
 python3 "$AUTOFLOW_ROOT/scripts/autoflow-cli.py" sprint $ARGUMENTS
@@ -104,19 +97,15 @@ List available profiles if no argument is given.
 
 ---
 
-## Resolving AUTOFLOW_ROOT
-
-If `AUTOFLOW_ROOT` is not set in the environment, resolve it programmatically:
-
-```python
-from pathlib import Path
-# This file is at <plugin_root>/.claude/commands/autoflow.md
-autoflow_root = Path(__file__).parent.parent.parent
-```
-
-Or ask the user to set it: `export AUTOFLOW_ROOT=/path/to/waip-autoflow`
-
 ## If AutoFlow is not installed
 
-If `autoflow-cli.py` is not found, inform the user:
-> AutoFlow is not installed. Clone the repo and run `bash scripts/setup.sh`.
+Inform the user:
+> AutoFlow is not installed. Clone https://github.com/your-org/waip-autoflow and run `bash scripts/setup.sh`.
+
+## Resolving AUTOFLOW_ROOT
+
+If the env var is not set, find it:
+```python
+from pathlib import Path
+autoflow_root = Path(__file__).parent.parent.parent  # .claude/commands/ → plugin root
+```

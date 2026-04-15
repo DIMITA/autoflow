@@ -2,131 +2,134 @@
 
 **Autonomous execution mode for Claude Code sprints.**
 
-Defines zones of automatic trust so Claude can implement features without interrupting you for every file write or `pytest` run — while still hard-blocking destructive operations and maintaining a full audit trail.
+Lets Claude implement features without interrupting you for every file write or test run — while hard-blocking destructive operations and maintaining a full audit trail.
+
+Works on any project, any language, any team.
 
 ---
 
 ## How it works
 
-The plugin intercepts every Claude Code tool call through a `PreToolUse` hook and applies a 3-level decision engine:
+Every Claude Code tool call passes through a `PreToolUse` hook that applies a 3-level decision engine:
 
 | Level | Decision | When | Example |
 |-------|----------|------|---------|
-| 1 | **Auto-approve** | Operation is inside a trusted path or command list | Write to `src/`, run `pytest` |
-| 2 | **Notify** | Notable but safe operation — logged, not blocked | `git commit`, `docker-compose restart` |
-| 3 | **Hard stop** | Destructive or out-of-scope operation | `rm -rf`, `--force`, `.env` modification |
+| 1 | **Auto-approve** | Inside a trusted path or command | Write `src/`, run `pytest` |
+| 2 | **Notify** | Notable but safe — logged, not blocked | `git commit`, `git push` |
+| 3 | **Hard stop** | Destructive or out-of-scope | `rm -rf`, `--force`, `.env` write |
 
-A lightweight **risk-verifier agent** (Haiku) handles gray zones — it scores ambiguous operations `low / medium / high` and feeds that back to the engine.
+A lightweight **risk-verifier agent** (Haiku, `maxTurns: 1`) handles gray zones by returning a `low / medium / high` score with a one-line justification.
 
 ---
 
 ## Installation
 
 ```bash
-# 1. Clone anywhere on your machine
+# Clone anywhere on your machine
 git clone <repo> ~/tools/waip-autoflow
 cd ~/tools/waip-autoflow
 
-# 2. Run setup — installs hooks + /autoflow command into ~/.claude/
+# Install — hooks + slash command into ~/.claude/
 bash scripts/setup.sh
 
-# 3. Reload your shell
+# Reload your shell
 source ~/.zshrc   # or ~/.bashrc
-
-# 4. Open Claude Code — the /autoflow command is now available globally
 ```
 
 `setup.sh` does three things:
-- Copies `.claude/commands/autoflow.md` → `~/.claude/commands/autoflow.md` (global slash command)
-- Merges `PreToolUse` / `PostToolUse` / `Stop` hooks into `~/.claude/settings.json`
-- Adds `export AUTOFLOW_ROOT=<path>` to your shell profile
+1. Copies `.claude/commands/autoflow.md` → `~/.claude/commands/autoflow.md` (global `/autoflow` command)
+2. Merges `PreToolUse` / `PostToolUse` / `Stop` hooks into `~/.claude/settings.json`
+3. Adds `export AUTOFLOW_ROOT=<path>` to your shell profile
 
 To uninstall: `bash scripts/setup.sh --uninstall`
 
 ---
 
+## Configure for your project
+
+Drop an `autoflow.config.json` at the **project root** — it takes precedence over the plugin defaults:
+
+```json
+{
+  "trusted_paths": ["src/", "tests/", "migrations/"],
+  "trusted_commands": ["pytest", "alembic", "git add", "git commit", "make"],
+  "checkpoint_before": ["alembic upgrade", "docker-compose down"],
+  "notify_on": ["git commit", "git push"],
+  "profiles": {
+    "backend": {
+      "trusted_paths": ["src/api/", "tests/"],
+      "risk_threshold": "low"
+    },
+    "frontend": {
+      "trusted_paths": ["src/components/", "src/pages/", "tests/"],
+      "trusted_commands": ["npm run", "npx", "yarn"],
+      "risk_threshold": "medium"
+    }
+  }
+}
+```
+
+Profile names are yours to define — they match your sprints, features, or team conventions.
+
+---
+
 ## Slash commands
 
-All commands are available in every Claude Code session after installation.
+Available globally in every Claude Code session after install.
 
 | Command | Description |
 |---------|-------------|
 | `/autoflow start` | Activate autonomous mode |
-| `/autoflow stop` | Return to standard interactive mode + save session log |
-| `/autoflow status` | Show active mode, zones, and session log summary |
-| `/autoflow trust <path>` | Add a path to the session trust zone (temporary) |
+| `/autoflow stop` | Deactivate + save session log |
+| `/autoflow status` | Active mode, zones, live session summary |
+| `/autoflow trust <path>` | Add a path to the session trust zone (not persisted) |
 | `/autoflow distrust <path>` | Remove a path from the session trust zone |
 | `/autoflow checkpoint [label]` | Create a git checkpoint before a risky operation |
-| `/autoflow report` | Full session audit report (actions + diffs) |
-| `/autoflow sprint <profile>` | Activate a named sprint profile |
+| `/autoflow report` | Full session audit report (actions + git diff) |
+| `/autoflow sprint <profile>` | Activate a named profile from your project config |
 
 ---
 
-## Sprint profiles
+## Built-in profiles
 
-Defined in `autoflow.config.json` under `profiles`:
+The plugin ships three generic profiles as defaults. Override or extend them in your project's `autoflow.config.json`.
 
 | Profile | Risk threshold | Trusted paths |
 |---------|---------------|---------------|
-| `sprint-etl` | low | `src/collectors/`, `src/etl/`, `tests/` |
-| `sprint-full` | medium | `src/`, `tests/`, `collectors/`, `etl/`, `scripts/` |
+| `sprint` | medium | `src/`, `tests/`, `test/` |
+| `strict` | low | none (whitelist only) |
 | `review` | high | none (notify on everything) |
-| `safe` | high | none (extra blocked patterns) |
 
 ---
 
-## Configuration
+## Risk threshold reference
 
-`autoflow.config.json` in the plugin root controls defaults. Copy it to your project root to override per-project:
-
-```json
-{
-  "mode": "sprint",
-  "risk_threshold": "medium",
-  "trusted_paths": ["src/", "tests/"],
-  "trusted_commands": ["pytest", "git add", "git commit", "pip install"],
-  "blocked_patterns": ["rm -rf", "--force", "DROP TABLE"],
-  "notify_on": ["git commit", "docker-compose restart"],
-  "profiles": {
-    "my-sprint": {
-      "trusted_paths": ["src/feature-x/"],
-      "risk_threshold": "low"
-    }
-  },
-  "checkpoint_before": ["alembic upgrade", "docker-compose down"]
-}
-```
-
-### Risk threshold
-
-| Value | Behaviour for untrusted commands |
-|-------|----------------------------------|
-| `low` | Block everything not in the whitelist |
-| `medium` | Allow obvious read-only commands, block the rest |
+| Value | Behaviour for commands not in the trusted list |
+|-------|------------------------------------------------|
+| `low` | Block everything not explicitly whitelisted |
+| `medium` | Allow obvious read-only patterns, block the rest |
 | `high` | Allow everything not explicitly blocked |
 
 ---
 
 ## MCP Audit Server
 
-Add `.mcp.json` to your project root (or `~/.claude/mcp.json` globally) to enable the audit tools:
+Add to your project's `.mcp.json` (or `~/.claude/mcp.json` globally):
 
 ```json
 {
   "mcpServers": {
     "autoflow-audit": {
       "command": "python3",
-      "args": ["/path/to/waip-autoflow/mcp-server/server.py"]
+      "args": ["${AUTOFLOW_ROOT}/mcp-server/server.py"]
     }
   }
 }
 ```
 
-Available MCP tools:
-
-| Tool | Description |
-|------|-------------|
-| `get_session_log` | List all auto-approved / notified / blocked actions |
+| MCP Tool | Description |
+|----------|-------------|
+| `get_session_log` | All auto-approved / notified / blocked actions |
 | `get_diff_summary` | Git diff of files modified automatically |
 | `rollback_to_checkpoint` | Restore repo to a named checkpoint |
 | `export_report` | Write a markdown audit report |
@@ -139,22 +142,24 @@ Available MCP tools:
 waip-autoflow/
 ├── .claude/
 │   └── commands/
-│       └── autoflow.md      # /autoflow slash command (copied to ~/.claude/commands/ by setup.sh)
+│       └── autoflow.md      # /autoflow slash command source
+│                            # → copied to ~/.claude/commands/ by setup.sh
 ├── hooks/
-│   └── hooks.json           # Reference format (actual hooks live in ~/.claude/settings.json)
+│   └── hooks.json           # Reference format only
+│                            # (actual hooks live in ~/.claude/settings.json)
 ├── scripts/
 │   ├── decision-engine.py   # PreToolUse hook — 3-level rule engine
 │   ├── post-tool-logger.py  # PostToolUse hook — tracks modified files
-│   ├── session-stop.py      # Stop hook — marks turn boundaries in log
+│   ├── session-stop.py      # Stop hook — marks turn boundaries
 │   ├── autoflow-cli.py      # Backend for all /autoflow subcommands
 │   ├── checkpoint.sh        # Git checkpoint creation
-│   └── setup.sh             # Installs into ~/.claude/ (commands + settings.json)
+│   └── setup.sh             # Installer (hooks + command → ~/.claude/)
 ├── agents/
-│   └── risk-verifier.md     # Haiku-based gray-zone risk scorer (maxTurns: 1)
+│   └── risk-verifier.md     # Haiku-based gray-zone risk scorer
 ├── mcp-server/
-│   └── server.py            # MCP audit server (stdio JSON-RPC 2024-11-05)
-├── .mcp.json                # MCP config template (copy to project root)
-├── autoflow.config.json     # Default configuration
+│   └── server.py            # MCP audit server (stdio JSON-RPC)
+├── .mcp.json                # MCP config template
+├── autoflow.config.json     # Default config (override in project root)
 └── README.md
 ```
 
@@ -163,26 +168,9 @@ waip-autoflow/
 ## Session state
 
 - Active session: `~/.autoflow/session.json`
-- Past sessions: `~/.autoflow/logs/session-<timestamp>.json` (saved on `/autoflow stop`)
+- Archived sessions: `~/.autoflow/logs/session-<timestamp>.json`
 
-Tracked fields: `active`, `profile`, `trusted_paths_extra`, `checkpoints`, `modified_files`, `log` (full action history with timestamps, tool, decision, reason).
-
----
-
-## Concrete example — WAIP Sprint 2 with `sprint-etl`
-
-```
-/autoflow sprint sprint-etl
-
-Claude implements WAIP-25 (RSS collector):
-  writes src/collectors/rss.py          ✅ auto-approved  (trusted path)
-  runs pytest tests/test_rss.py         ✅ auto-approved  (trusted command)
-  git add src/ && git commit -m "feat"  📋 notified       (in log, no interruption)
-  tries to modify docker-compose.yml    📌 auto-checkpoint created
-                                        🚫 hard stop → asks for confirmation
-```
-
-Zero manual interruptions for the standard flow. Full audit trail throughout.
+Each session tracks: profile, trusted path overrides, checkpoints, modified files, and a full timestamped action log.
 
 ---
 
@@ -190,4 +178,4 @@ Zero manual interruptions for the standard flow. Full audit trail throughout.
 
 - Python 3.10+
 - Git
-- Claude Code with hooks support (`~/.claude/settings.json`)
+- Claude Code with hooks support

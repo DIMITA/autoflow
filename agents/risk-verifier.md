@@ -53,26 +53,26 @@ Respond with **exactly** this JSON — nothing else:
 
 - **Always `block`** if the command or path could cause data loss, credential exposure, or service disruption.
 - **Always `allow`** if the operation is a read-only inspection of trusted files.
-- **Consider `medium`/`notify`** if the operation modifies files that are adjacent to (but not inside) the trusted paths, or runs a command that is not in the trusted list but appears benign given the task context.
+- **Consider `notify`** if the operation modifies files adjacent to (but outside) trusted paths, or runs a command not in the trusted list that appears benign given the task context.
 - **Confidence < 0.6** should lean toward `block` unless the operation is clearly safe.
 
 ## Example Input
 
 ```
 Tool: Bash
-Arguments: {"command": "alembic upgrade head"}
-Task: Implementing WAIP-25 — RSS collector with DB storage
-Session history: [pytest tests/test_rss.py (allowed), git add src/ (allowed)]
-Profile: sprint-etl (trusted: src/collectors/, src/etl/, tests/)
+Arguments: {"command": "npm run build"}
+Task: Adding a date picker component to the checkout form
+Session history: [Write src/components/DatePicker.tsx (allowed), Write tests/DatePicker.test.tsx (allowed)]
+Profile: sprint (trusted: src/, tests/, risk_threshold: medium)
 ```
 
 ## Example Output
 
 ```json
 {
-  "risk": "medium",
-  "confidence": 0.7,
-  "reason": "alembic upgrade modifies the database schema which is outside the trusted file paths but is a standard part of ETL development.",
-  "recommendation": "notify"
+  "risk": "low",
+  "confidence": 0.9,
+  "reason": "npm run build is a standard build verification step consistent with the active frontend task.",
+  "recommendation": "allow"
 }
 ```
