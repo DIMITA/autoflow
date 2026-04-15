@@ -1,12 +1,14 @@
 {
+  "_comment": "Reference format — setup.sh merges these into ~/.claude/settings.json. Do not use this file directly with Claude Code.",
   "hooks": {
     "PreToolUse": [
       {
         "matcher": ".*",
+        "_source": "waip-autoflow",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${AUTOFLOW_ROOT}/scripts/decision-engine.py\""
+            "command": "AUTOFLOW_ROOT=\"<plugin_root>\" python3 \"<plugin_root>/scripts/decision-engine.py\""
           }
         ]
       }
@@ -14,20 +16,22 @@
     "PostToolUse": [
       {
         "matcher": "Bash|Write|Edit|NotebookEdit",
+        "_source": "waip-autoflow",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${AUTOFLOW_ROOT}/scripts/post-tool-logger.py\""
+            "command": "AUTOFLOW_ROOT=\"<plugin_root>\" python3 \"<plugin_root>/scripts/post-tool-logger.py\""
           }
         ]
       }
     ],
     "Stop": [
       {
+        "_source": "waip-autoflow",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${AUTOFLOW_ROOT}/scripts/session-stop.py\""
+            "command": "AUTOFLOW_ROOT=\"<plugin_root>\" python3 \"<plugin_root>/scripts/session-stop.py\""
           }
         ]
       }
