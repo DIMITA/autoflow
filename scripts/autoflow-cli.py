@@ -23,6 +23,74 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 CONFIG_FILE = PLUGIN_ROOT / "autoflow.config.json"
+
+AUTOFLOW_MARKER_START = "<!-- AUTOFLOW:START -->"
+AUTOFLOW_MARKER_END = "<!-- AUTOFLOW:END -->"
+
+
+def _inject_claude_md(config: dict, session: dict) -> None:
+    """
+    Inject autonomous-mode instructions into CLAUDE.md.
+    This is what stops Claude from asking "should I continue?" between tasks.
+    The block is clearly marked so _remove_claude_md() can find and strip it.
+    """
+    profile = session.get("profile") or "default"
+    threshold = config.get("risk_threshold", "medium")
+    if profile != "default":
+        threshold = config.get("profiles", {}).get(profile, {}).get("risk_threshold", threshold)
+
+    block = f"""{AUTOFLOW_MARKER_START}
+## AutoFlow — Autonomous Mode Active
+
+Profile: `{profile}` | Risk threshold: `{threshold}`
+
+You are in autonomous execution mode. Rules:
+
+- **Do not ask "Should I continue with the next task?"** — continue directly.
+- **Do not present options and ask which to choose** — pick the best approach and implement it.
+- **Do not ask for confirmation before writing files or running commands** — the AutoFlow hook handles that automatically.
+- **Do not summarise progress and wait** — only stop when all planned tasks are complete or an AutoFlow hook blocks you.
+
+Stop only if:
+1. An AutoFlow hook explicitly blocks an operation (hard blocker — act on the reason it gives you)
+2. You are genuinely missing information that cannot be inferred from the codebase or prior context
+
+Otherwise: implement, test, commit, move to the next task.
+{AUTOFLOW_MARKER_END}"""
+
+    claude_md = Path.cwd() / "CLAUDE.md"
+    if claude_md.exists():
+        content = claude_md.read_text()
+        # Remove any existing AutoFlow block first
+        content = _strip_autoflow_block(content)
+        # Prepend — instructions at the top are seen first
+        claude_md.write_text(block + "\n\n" + content)
+    else:
+        claude_md.write_text(block + "\n")
+
+
+def _remove_claude_md() -> None:
+    """Remove the AutoFlow instruction block from CLAUDE.md on /autoflow stop."""
+    claude_md = Path.cwd() / "CLAUDE.md"
+    if not claude_md.exists():
+        return
+    content = claude_md.read_text()
+    cleaned = _strip_autoflow_block(content).lstrip("\n")
+    if cleaned:
+        claude_md.write_text(cleaned)
+    else:
+        # File only contained the AutoFlow block — remove it entirely
+        claude_md.unlink()
+
+
+def _strip_autoflow_block(content: str) -> str:
+    """Remove any existing AutoFlow marker block from a string."""
+    import re
+    pattern = re.compile(
+        re.escape(AUTOFLOW_MARKER_START) + r".*?" + re.escape(AUTOFLOW_MARKER_END) + r"\n?",
+        re.DOTALL,
+    )
+    return pattern.sub("", content)
 SESSION_FILE = Path.home() / ".autoflow" / "session.json"
 LOGS_DIR = Path.home() / ".autoflow" / "logs"
 
@@ -75,6 +143,7 @@ def cmd_start(args: list[str]) -> None:
     session.setdefault("trusted_paths_extra", [])
 
     save_session(session)
+    _inject_claude_md(config, session)
 
     print("✅  AutoFlow ACTIVE")
     print(f"   Mode      : {session['mode']}")
@@ -101,6 +170,7 @@ def cmd_stop(args: list[str]) -> None:
 
     session["active"] = False
     session["stopped_at"] = datetime.now().isoformat(timespec="seconds")
+    _remove_claude_md()
 
     # Save final session to logs
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
