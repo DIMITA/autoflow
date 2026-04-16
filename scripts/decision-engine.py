@@ -274,9 +274,32 @@ def main() -> None:
 
     config = load_config()
     session = load_session()
+    active = session.get("active", False)
 
-    # If AutoFlow is not active, pass through — don't interfere
-    if not session.get("active", False):
+    # Even when AutoFlow is inactive, always enforce hard blocks.
+    # This is necessary because setup.sh sets permissions.allow broadly
+    # (to suppress dialogs) — the hook is the only safety net.
+    if not active:
+        hard_blocks = config.get("blocked_patterns", [])
+        sensitive = config.get("sensitive_files", [])
+        command = extract_command(tool_name, tool_input)
+        file_path = extract_file_path(tool_name, tool_input)
+
+        if command:
+            matched = matches_any(command, hard_blocks)
+            if matched:
+                print(json.dumps({"decision": "block", "reason": f"[AutoFlow] Destructive pattern: `{matched}`"}))
+                sys.exit(0)
+
+        if file_path and tool_name in ("Write", "Edit", "NotebookEdit"):
+            basename = os.path.basename(file_path)
+            for sf in sensitive:
+                if basename == sf or file_path.replace("\\", "/").endswith("/" + sf):
+                    print(json.dumps({"decision": "block", "reason": f"[AutoFlow] Sensitive file blocked: `{file_path}`"}))
+                    sys.exit(0)
+
+        # AutoFlow inactive and no hard block — approve silently
+        print(json.dumps({"decision": "approve"}))
         sys.exit(0)
 
     effective = get_effective_config(config, session)
@@ -288,7 +311,7 @@ def main() -> None:
     details = command or file_path or str(tool_input)[:100]
 
     if decision == "checkpoint":
-        # Create checkpoint, log it, then allow
+        # Create checkpoint, log it, then approve
         log_action(session, "checkpoint", tool_name, details, reason)
         session = load_session()  # reload after save
         try:
@@ -296,24 +319,22 @@ def main() -> None:
         except Exception:
             pass
         log_action(session, "allow", tool_name, details, f"After auto-checkpoint: {reason}")
+        print(json.dumps({"decision": "approve"}))
         sys.exit(0)
 
     log_action(session, decision, tool_name, details, reason)
 
     if decision == "block":
-        output = {
-            "decision": "block",
-            "reason": f"[AutoFlow] {reason}",
-        }
-        print(json.dumps(output))
+        print(json.dumps({"decision": "block", "reason": f"[AutoFlow] {reason}"}))
         sys.exit(0)
 
     if decision == "notify":
-        # Print to stderr so it shows as a subtle note, not a block
-        print(f"[AutoFlow] {reason}", file=sys.stderr)
+        # Approve but surface the reason as context (shown in Claude's output, not a blocker)
+        print(json.dumps({"decision": "approve", "reason": f"[AutoFlow] {reason}"}))
         sys.exit(0)
 
-    # allow — silent exit 0
+    # allow — explicit approve so Claude Code skips the permission dialog
+    print(json.dumps({"decision": "approve"}))
     sys.exit(0)
 
 

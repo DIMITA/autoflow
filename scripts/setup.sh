@@ -32,13 +32,14 @@ if [[ "${1:-}" == "--uninstall" ]]; then
     log "Removed ${COMMANDS_DIR}/autoflow.md"
   fi
 
-  # Remove hooks from settings.json
+  # Remove hooks and permissions from settings.json
   if [[ -f "${CLAUDE_SETTINGS}" ]]; then
     python3 - <<PYEOF
 import json
 with open("${CLAUDE_SETTINGS}") as f:
     settings = json.load(f)
 
+# Remove hooks
 hooks = settings.get("hooks", {})
 for event in list(hooks.keys()):
     hooks[event] = [
@@ -52,9 +53,19 @@ if not hooks:
 else:
     settings["hooks"] = hooks
 
+# Remove the broad permissions added by setup
+autoflow_perms = ["Bash(*)", "Write(*)", "Edit(*)", "Read(*)", "Glob(*)", "Grep(*)", "NotebookEdit(*)", "Task(*)"]
+if "permissions" in settings and "allow" in settings["permissions"]:
+    settings["permissions"]["allow"] = [
+        p for p in settings["permissions"]["allow"]
+        if p not in autoflow_perms
+    ]
+    if not settings["permissions"]["allow"]:
+        settings.pop("permissions", None)
+
 with open("${CLAUDE_SETTINGS}", "w") as f:
     json.dump(settings, f, indent=2)
-print("Hooks removed from settings.json")
+print("Hooks and permissions removed from settings.json")
 PYEOF
   fi
 
@@ -148,6 +159,43 @@ with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
 
 print(f"Hooks written to {settings_path}")
+PYEOF
+
+# 2b. Add broad allow-permissions so Claude Code doesn't show dialogs for
+#     tools that our hook already controls. The hook handles the actual
+#     allow/block logic — permissions here just prevent the UI dialog layer.
+python3 - <<PYEOF
+import json
+from pathlib import Path
+
+settings_path = Path("${CLAUDE_SETTINGS}")
+with open(settings_path) as f:
+    settings = json.load(f)
+
+# These are the tools AutoFlow intercepts. By pre-allowing them here,
+# Claude Code won't show its own permission dialogs — the hook decides instead.
+allow_list = [
+    "Bash(*)",
+    "Write(*)",
+    "Edit(*)",
+    "Read(*)",
+    "Glob(*)",
+    "Grep(*)",
+    "NotebookEdit(*)",
+    "Task(*)",
+]
+
+perms = settings.setdefault("permissions", {})
+existing = perms.get("allow", [])
+for entry in allow_list:
+    if entry not in existing:
+        existing.append(entry)
+perms["allow"] = existing
+
+with open(settings_path, "w") as f:
+    json.dump(settings, f, indent=2)
+
+print(f"Permissions written to {settings_path}")
 PYEOF
 
 # 3. Suggest adding AUTOFLOW_ROOT to shell profile
