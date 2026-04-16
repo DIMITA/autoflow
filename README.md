@@ -2,44 +2,74 @@
 
 **Autonomous execution mode for Claude Code sprints.**
 
-Lets Claude implement features without interrupting you for every file write or test run — while hard-blocking destructive operations and maintaining a full audit trail.
+Give Claude a list of tasks. It executes them start to finish — no permission dialogs, no "should I continue?", no "which approach do you prefer?". It stops only when it hits a genuine blocker or a destructive operation.
 
 Works on any project, any language, any team.
 
 ---
 
-## How it works
+## The problem
 
-Every Claude Code tool call passes through a `PreToolUse` hook that applies a 3-level decision engine:
+Claude Code interrupts in two ways:
+
+1. **Permission dialogs** — "Can I run this command / write this file?" before every tool call
+2. **Conversational checkpoints** — "I've completed WAIP-47. Should I continue with WAIP-48? 🚀"
+
+Both destroy flow on a sprint. AutoFlow eliminates both.
+
+---
+
+## How to use it
+
+Give Claude a complete backlog at the start of the session, then activate AutoFlow:
+
+```
+Implement WAIP-48 (Dashboard), WAIP-49 (Brand detail page), WAIP-50 (Export).
+Specs are in the Linear tickets. Use the existing component library.
+
+/autoflow sprint frontend
+```
+
+Claude will work through all three tickets autonomously. It writes files, runs tests, commits — without stopping to ask. The only things that interrupt it are genuine blockers:
+- An operation explicitly hard-blocked by your config (`rm -rf`, `.env` writes, etc.)
+- Something it genuinely cannot resolve without domain knowledge you haven't given it
+
+Everything else, it decides and does.
+
+---
+
+## What AutoFlow actually does
+
+**Removes permission dialogs** via `permissions.allow` in `~/.claude/settings.json`. Claude Code's native dialog layer is bypassed entirely — the hook takes over.
+
+**Routes every tool call** through a 3-level decision engine (PreToolUse hook):
 
 | Level | Decision | When | Example |
 |-------|----------|------|---------|
-| 1 | **Auto-approve** | Inside a trusted path or command | Write `src/`, run `pytest` |
-| 2 | **Notify** | Notable but safe — logged, not blocked | `git commit`, `git push` |
-| 3 | **Hard stop** | Destructive or out-of-scope | `rm -rf`, `--force`, `.env` write |
+| 1 | **Approve** | Inside trusted paths / commands | Write `src/`, run `pytest` |
+| 2 | **Approve + log** | Notable but safe | `git commit`, `git push` |
+| 3 | **Hard block** | Destructive or out-of-scope | `rm -rf`, `--force`, `.env` write |
 
-A lightweight **risk-verifier agent** (Haiku, `maxTurns: 1`) handles gray zones by returning a `low / medium / high` score with a one-line justification.
+Hard blocks are always active — even when AutoFlow is not started. Installing the plugin means `rm -rf` never slips through silently.
+
+**What AutoFlow does NOT do:** decide what to build, resolve ambiguous requirements, or make high-level architectural choices. That's still your job, at the start of the session when you hand Claude the backlog.
 
 ---
 
 ## Installation
 
 ```bash
-# Clone anywhere on your machine
 git clone <repo> ~/tools/waip-autoflow
 cd ~/tools/waip-autoflow
-
-# Install — hooks + slash command into ~/.claude/
 bash scripts/setup.sh
-
-# Reload your shell
 source ~/.zshrc   # or ~/.bashrc
 ```
 
-`setup.sh` does three things:
-1. Copies `.claude/commands/autoflow.md` → `~/.claude/commands/autoflow.md` (global `/autoflow` command)
-2. Merges `PreToolUse` / `PostToolUse` / `Stop` hooks into `~/.claude/settings.json`
-3. Adds `export AUTOFLOW_ROOT=<path>` to your shell profile
+`setup.sh`:
+1. Copies the `/autoflow` slash command to `~/.claude/commands/`
+2. Adds `PreToolUse` / `PostToolUse` / `Stop` hooks to `~/.claude/settings.json`
+3. Sets broad `permissions.allow` so Claude Code shows no native dialogs
+4. Adds `AUTOFLOW_ROOT` to your shell profile
 
 To uninstall: `bash scripts/setup.sh --uninstall`
 
@@ -47,83 +77,73 @@ To uninstall: `bash scripts/setup.sh --uninstall`
 
 ## Configure for your project
 
-Inside a Claude Code session, run:
+From inside a Claude Code session:
 
 ```
 /autoflow init
 ```
 
-This generates an `autoflow.config.json` at the project root. AutoFlow detects the stack (Python, Node, Go, Rust…) and pre-fills sensible defaults. You can then ask Claude to edit the file directly — no need to leave the session.
-
-The file takes precedence over the plugin defaults. Example of what it might look like after customisation:
+Detects your stack and writes `autoflow.config.json` at the project root. Edit it to add your own profiles:
 
 ```json
 {
-  "trusted_paths": ["src/", "tests/", "migrations/"],
-  "trusted_commands": ["pytest", "alembic", "git add", "git commit", "make"],
+  "trusted_paths": ["src/", "tests/"],
+  "trusted_commands": ["pytest", "npm run", "git add", "git commit"],
   "checkpoint_before": ["alembic upgrade", "docker-compose down"],
-  "notify_on": ["git commit", "git push"],
   "profiles": {
+    "frontend": {
+      "trusted_paths": ["src/components/", "src/pages/", "tests/"],
+      "risk_threshold": "medium"
+    },
     "backend": {
       "trusted_paths": ["src/api/", "tests/"],
       "risk_threshold": "low"
-    },
-    "frontend": {
-      "trusted_paths": ["src/components/", "src/pages/", "tests/"],
-      "trusted_commands": ["npm run", "npx", "yarn"],
-      "risk_threshold": "medium"
     }
   }
 }
 ```
 
-The config is re-read on every tool call — changes take effect immediately, no restart needed.
+The config is re-read on every tool call — edits take effect immediately.
 
 ---
 
 ## Slash commands
 
-Available globally in every Claude Code session after install.
-
 | Command | Description |
 |---------|-------------|
-| `/autoflow init` | Generate `autoflow.config.json` for the current project |
+| `/autoflow init` | Generate `autoflow.config.json` for this project |
 | `/autoflow start` | Activate autonomous mode |
 | `/autoflow stop` | Deactivate + save session log |
-| `/autoflow status` | Active mode, zones, live session summary |
-| `/autoflow trust <path>` | Add a path to the session trust zone (not persisted) |
+| `/autoflow status` | Active mode, zones, live log summary |
+| `/autoflow trust <path>` | Add a path to the session trust zone |
 | `/autoflow distrust <path>` | Remove a path from the session trust zone |
-| `/autoflow checkpoint [label]` | Create a git checkpoint before a risky operation |
-| `/autoflow report` | Full session audit report (actions + git diff) |
-| `/autoflow sprint <profile>` | Activate a named profile from your project config |
+| `/autoflow checkpoint [label]` | Create a git checkpoint manually |
+| `/autoflow report` | Full session audit (actions + git diff) |
+| `/autoflow sprint <profile>` | Activate a named profile |
 
 ---
 
 ## Built-in profiles
 
-The plugin ships three generic profiles as defaults. Override or extend them in your project's `autoflow.config.json`.
-
 | Profile | Risk threshold | Trusted paths |
 |---------|---------------|---------------|
 | `sprint` | medium | `src/`, `tests/`, `test/` |
-| `strict` | low | none (whitelist only) |
-| `review` | high | none (notify on everything) |
+| `strict` | low | none — whitelist only |
+| `review` | high | none — notify on everything |
 
 ---
 
-## Risk threshold reference
+## Risk threshold
 
-| Value | Behaviour for commands not in the trusted list |
-|-------|------------------------------------------------|
-| `low` | Block everything not explicitly whitelisted |
+| Value | Behaviour for unlisted commands |
+|-------|--------------------------------|
+| `low` | Block everything not on the whitelist |
 | `medium` | Allow obvious read-only patterns, block the rest |
 | `high` | Allow everything not explicitly blocked |
 
 ---
 
 ## MCP Audit Server
-
-Add to your project's `.mcp.json` (or `~/.claude/mcp.json` globally):
 
 ```json
 {
@@ -136,9 +156,9 @@ Add to your project's `.mcp.json` (or `~/.claude/mcp.json` globally):
 }
 ```
 
-| MCP Tool | Description |
-|----------|-------------|
-| `get_session_log` | All auto-approved / notified / blocked actions |
+| Tool | Description |
+|------|-------------|
+| `get_session_log` | All approved / notified / blocked actions |
 | `get_diff_summary` | Git diff of files modified automatically |
 | `rollback_to_checkpoint` | Restore repo to a named checkpoint |
 | `export_report` | Write a markdown audit report |
@@ -151,23 +171,18 @@ Add to your project's `.mcp.json` (or `~/.claude/mcp.json` globally):
 waip-autoflow/
 ├── .claude/
 │   └── commands/
-│       └── autoflow.md      # /autoflow slash command source
-│                            # → copied to ~/.claude/commands/ by setup.sh
-├── hooks/
-│   └── hooks.json           # Reference format only
-│                            # (actual hooks live in ~/.claude/settings.json)
+│       └── autoflow.md      # /autoflow slash command (→ ~/.claude/commands/)
 ├── scripts/
 │   ├── decision-engine.py   # PreToolUse hook — 3-level rule engine
 │   ├── post-tool-logger.py  # PostToolUse hook — tracks modified files
-│   ├── session-stop.py      # Stop hook — marks turn boundaries
+│   ├── session-stop.py      # Stop hook — marks turn boundaries in log
 │   ├── autoflow-cli.py      # Backend for all /autoflow subcommands
 │   ├── checkpoint.sh        # Git checkpoint creation
-│   └── setup.sh             # Installer (hooks + command → ~/.claude/)
+│   └── setup.sh             # Installer
 ├── agents/
-│   └── risk-verifier.md     # Haiku-based gray-zone risk scorer
+│   └── risk-verifier.md     # Haiku risk scorer for gray zones
 ├── mcp-server/
-│   └── server.py            # MCP audit server (stdio JSON-RPC)
-├── .mcp.json                # MCP config template
+│   └── server.py            # MCP audit server
 ├── autoflow.config.json     # Default config (override in project root)
 └── README.md
 ```
@@ -176,10 +191,8 @@ waip-autoflow/
 
 ## Session state
 
-- Active session: `~/.autoflow/session.json`
-- Archived sessions: `~/.autoflow/logs/session-<timestamp>.json`
-
-Each session tracks: profile, trusted path overrides, checkpoints, modified files, and a full timestamped action log.
+- Active: `~/.autoflow/session.json`
+- Archived: `~/.autoflow/logs/session-<timestamp>.json`
 
 ---
 
