@@ -88,8 +88,9 @@ def cmd_start(args: list[str]) -> None:
         effective_paths = p.get("trusted_paths", effective_paths)
 
     print(f"   Trusted paths: {', '.join(effective_paths) if effective_paths else '(none)'}")
-    print("\n   All operations in trusted paths are auto-approved.")
-    print("   Destructive patterns are always hard-blocked.")
+    print()
+    print("   Autonomous mode ON — Claude will not ask for confirmation between tasks.")
+    print("   Hard blocks still apply (rm -rf, .env writes, etc.)")
 
 
 def cmd_stop(args: list[str]) -> None:
